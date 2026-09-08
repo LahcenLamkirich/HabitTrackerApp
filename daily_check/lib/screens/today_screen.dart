@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../models/models.dart';
 import '../providers/providers.dart';
+import '../widgets/screen_title.dart';
 import '../widgets/task_tile.dart';
 import 'add_edit_task_screen.dart';
 
@@ -40,57 +41,24 @@ class TodayScreen extends ConsumerWidget {
       body: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          // App bar
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: const Color(0xFFF9F7F4),
-            surfaceTintColor: Colors.transparent,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFFF8A65), Color(0xFFE85D30)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.task_alt_rounded, color: Colors.white, size: 16),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: ScreenTitle(
+                icon: Icons.task_alt_rounded,
+                color: const Color(0xFFE85D30),
+                title: 'Daily Check',
+                subtitle: 'Your daily habit checklist',
+                trailing: Icon(
+                  settings.notificationsEnabled
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
+                  color: settings.notificationsEnabled
+                      ? const Color(0xFF1F2429)
+                      : const Color(0xFF9CA3AF),
                 ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Daily Check',
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
-                    color: Color(0xFF1F2429),
-                  ),
-                ),
-              ],
+              ),
             ),
-            actions: [
-              if (settings.notificationsEnabled)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Icon(
-                    Icons.notifications_active_outlined,
-                    color: Color(0xFF1F2429),
-                  ),
-                )
-              else
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Icon(
-                    Icons.notifications_off_outlined,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ),
-            ],
           ),
           SliverToBoxAdapter(
             child: _Header(

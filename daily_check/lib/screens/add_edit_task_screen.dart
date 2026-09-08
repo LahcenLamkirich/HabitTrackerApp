@@ -5,6 +5,7 @@ import '../helpers/icon_helper.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../widgets/responsive_center.dart';
+import '../widgets/screen_title.dart';
 
 /// Add or edit a [Task].
 ///
@@ -19,22 +20,7 @@ class AddEditTaskScreen extends ConsumerStatefulWidget {
   ConsumerState<AddEditTaskScreen> createState() => _AddEditTaskScreenState();
 }
 
-/// Accent color per icon name, so the live preview and selector chips feel
-/// distinct per habit rather than all sharing one primary tint.
-const Map<String?, Color> _iconColors = {
-  null: Color(0xFFE85D30),
-  'supplements': Color(0xFF3A86FF),
-  'water': Color(0xFF00B4D8),
-  'fitness': Color(0xFFEF476F),
-  'medication': Color(0xFFB388FF),
-  'food': Color(0xFFFFB703),
-  'sleep': Color(0xFF6C63FF),
-  'reading': Color(0xFF2EC4B6),
-  'workout': Color(0xFFFF6B6B),
-  'meditation': Color(0xFF52B788),
-};
-
-Color _colorForIcon(String? name) => _iconColors[name] ?? _iconColors[null]!;
+Color _colorForIcon(String? name) => IconHelper.colorFor(name);
 
 class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
     with SingleTickerProviderStateMixin {
@@ -171,33 +157,6 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [accent, accent.withValues(alpha: 0.7)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                _isEditing ? Icons.edit_rounded : Icons.add_rounded,
-                color: Colors.white,
-                size: 15,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              _isEditing ? 'Edit Habit' : 'New Habit',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
         actions: [
           if (_isEditing)
             PopupMenuButton<String>(
@@ -230,13 +189,24 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
             children: [
+              // Title
+              _staggered(0, ScreenTitle(
+                icon: _isEditing ? Icons.edit_rounded : Icons.add_task_rounded,
+                color: accent,
+                title: _isEditing ? 'Edit Habit' : 'New Habit',
+                subtitle: _isEditing
+                    ? 'Fine-tune how this habit works'
+                    : 'Set it up once, build it daily',
+              )),
+              const SizedBox(height: 16),
+
               // Live preview
               _staggered(0, _HabitPreview(
                 name: _name.text,
                 icon: _icon,
                 color: accent,
               )),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               // Habit name
               _staggered(1, Text(
@@ -433,10 +403,10 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
   }
 }
 
-/// Live preview card at the top of the form — a big animated icon avatar
-/// with a color that morphs to match the chosen icon, and the habit name
-/// echoed back so the user sees what they're building as they build it.
-class _HabitPreview extends StatelessWidget {
+/// A live "how this'll look in your Today list" preview — styled exactly
+/// like the real [TaskTile] row, with a soft pulsing glow behind the icon
+/// so it doesn't sit static while the rest of the form comes alive.
+class _HabitPreview extends StatefulWidget {
   final String name;
   final String? icon;
   final Color color;
@@ -444,59 +414,137 @@ class _HabitPreview extends StatelessWidget {
   const _HabitPreview({required this.name, required this.icon, required this.color});
 
   @override
+  State<_HabitPreview> createState() => _HabitPreviewState();
+}
+
+class _HabitPreviewState extends State<_HabitPreview> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [color.withValues(alpha: 0.85), color],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final colorScheme = Theme.of(context).colorScheme;
+    final displayName = widget.name.trim().isEmpty ? 'Your new habit' : widget.name.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 8),
+          child: Row(
+            children: [
+              Icon(Icons.visibility_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 5),
+              Text(
+                'HOW IT LOOKS IN YOUR LIST',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: widget.color.withValues(alpha: 0.18)),
+            boxShadow: [
+              BoxShadow(color: widget.color.withValues(alpha: 0.1), blurRadius: 14, offset: const Offset(0, 6)),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.8, end: 1),
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutBack,
-            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.25),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 2),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: AnimatedBuilder(
+                  animation: _pulse,
+                  builder: (context, child) {
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 44 + _pulse.value * 10,
+                          height: 44 + _pulse.value * 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: widget.color.withValues(alpha: 0.12 * (1 - _pulse.value)),
+                          ),
+                        ),
+                        child!,
+                      ],
+                    );
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: widget.color.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(IconHelper.fromName(widget.icon), size: 19, color: widget.color),
+                  ),
+                ),
               ),
-              child: Icon(IconHelper.fromName(icon), color: Colors.white, size: 28),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              name.trim().isEmpty ? 'Your new habit' : name.trim(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
               ),
-            ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 11, color: widget.color),
+                    const SizedBox(width: 3),
+                    Text('New', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: widget.color)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1.5),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

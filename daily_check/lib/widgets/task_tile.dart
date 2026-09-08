@@ -28,6 +28,7 @@ class TaskTile extends ConsumerWidget {
     final textTheme = Theme.of(context).textTheme;
 
     final isDone = status == TaskStatus.done;
+    final accent = IconHelper.colorFor(task.icon);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
@@ -57,13 +58,13 @@ class TaskTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceVariant,
+                    color: accent.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(
                     IconHelper.fromName(task.icon),
                     size: 22,
-                    color: colorScheme.primary,
+                    color: accent,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -138,10 +139,10 @@ class TaskTile extends ConsumerWidget {
                   width: 24,
                   height: 24,
                   decoration: BoxDecoration(
-                    color: Colors.transparent,
+                    color: isDone ? accent.withValues(alpha: 0.14) : Colors.transparent,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                      color: isDone ? accent : colorScheme.outlineVariant.withValues(alpha: 0.4),
                       width: 1.5,
                     ),
                   ),
@@ -149,7 +150,7 @@ class TaskTile extends ConsumerWidget {
                       ? Icon(
                           Icons.check,
                           size: 15,
-                          color: colorScheme.primary,
+                          color: accent,
                         )
                       : const SizedBox.shrink(),
                 ),
