@@ -99,6 +99,15 @@ final allTasksProvider = Provider<List<Task>>((ref) {
   return storage.allTasks;
 });
 
+/// Active tasks scheduled for today, per each task's [Task.activeWeekdays]
+/// — what the Today checklist should actually show.
+@override
+final todayScheduledTasksProvider = Provider<List<Task>>((ref) {
+  final tasks = ref.watch(activeTasksProvider);
+  final today = DateTime.now();
+  return tasks.where((t) => t.isScheduledOn(today)).toList();
+});
+
 /// Notifier for task mutations (add, update, delete, toggle, skip).
 class TaskNotifier extends Notifier<void> {
   @override
@@ -109,6 +118,7 @@ class TaskNotifier extends Notifier<void> {
     String? icon,
     String? notes,
     TimeOfDay? reminderTime,
+    List<int>? activeWeekdays,
   }) async {
     final settings = ref.read(settingsProvider);
     final task = await storage.addTask(
@@ -116,6 +126,7 @@ class TaskNotifier extends Notifier<void> {
       icon: icon,
       notes: notes,
       reminderTime: reminderTime ?? settings.defaultReminderTime,
+      activeWeekdays: activeWeekdays,
     );
 
     // Schedule notification if applicable.

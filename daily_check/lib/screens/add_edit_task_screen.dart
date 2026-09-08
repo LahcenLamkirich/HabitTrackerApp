@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../providers/providers.dart';
 import '../widgets/responsive_center.dart';
 import '../widgets/screen_title.dart';
+import 'reminder_step_screen.dart';
 
 /// Add or edit a [Task].
 ///
@@ -30,6 +31,7 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
   late TimeOfDay? _reminderTime;
   late bool _isActive;
   late String _frequency;
+  late Set<int> _customDays;
   late final AnimationController _entrance;
 
   bool get _isEditing => widget.task != null;
@@ -43,7 +45,8 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
     _icon = t?.icon;
     _reminderTime = t?.reminderTime;
     _isActive = t?.isActive ?? true;
-    _frequency = 'Daily'; // Default frequency
+    _frequency = t?.frequencyLabel ?? 'Daily';
+    _customDays = (t != null ? t.activeWeekdays.toSet() : <int>{});
     _entrance = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -58,6 +61,26 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
     super.dispose();
   }
 
+  /// Turns the Frequency selection into the [Task.activeWeekdays] list the
+  /// rest of the app (Today's checklist, streaks, consistency) actually
+  /// schedules against. Returns null if 'Custom' is selected but no day
+  /// has been picked yet — the rule needs at least one day to mean anything.
+  List<int>? _resolveActiveWeekdays() {
+    switch (_frequency) {
+      case 'Weekdays':
+        return const [1, 2, 3, 4, 5];
+      case 'Weekends':
+        return const [6, 7];
+      case 'Custom':
+        return _customDays.isEmpty ? null : (_customDays.toList()..sort());
+      case 'Daily':
+      default:
+        return kAllWeekdays;
+    }
+  }
+
+  /// Saves changes to an existing habit. Editing keeps the reminder field
+  /// inline (no wizard) since the value is already known.
   Future<void> _save() async {
     final name = _name.text.trim();
     if (name.isEmpty) {
@@ -66,25 +89,65 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
       );
       return;
     }
-
-    final notifier = ref.read(taskNotifierProvider.notifier);
-    if (_isEditing) {
-      final updated = widget.task!.copyWith(
-        name: name,
-        icon: _icon,
-        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-        reminderTime: _reminderTime,
-        isActive: _isActive,
+    final activeWeekdays = _resolveActiveWeekdays();
+    if (activeWeekdays == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one day for a custom schedule')),
       );
-      await notifier.updateTask(updated);
-    } else {
-      await notifier.addTask(
-        name: name,
-        icon: _icon,
-        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-        reminderTime: _reminderTime,
-      );
+      return;
     }
+
+    final updated = widget.task!.copyWith(
+      name: name,
+      icon: _icon,
+      notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      reminderTime: _reminderTime,
+      isActive: _isActive,
+      activeWeekdays: activeWeekdays,
+    );
+    await ref.read(taskNotifierProvider.notifier).updateTask(updated);
+
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// For new habits: hands off to the reminder step (a separate, skippable
+  /// screen) instead of saving immediately, so setting a reminder reads as
+  /// an explicit — but optional — step rather than a buried form field.
+  Future<void> _continueToReminderStep() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a name')),
+      );
+      return;
+    }
+    final activeWeekdays = _resolveActiveWeekdays();
+    if (activeWeekdays == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one day for a custom schedule')),
+      );
+      return;
+    }
+
+    final result = await Navigator.of(context).push<Object?>(
+      MaterialPageRoute(
+        builder: (_) => ReminderStepScreen(
+          habitName: name,
+          accent: _colorForIcon(_icon),
+          initialTime: _reminderTime,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return; // backed out — stay on the form
+
+    final reminder = result is TimeOfDay ? result : null;
+    await ref.read(taskNotifierProvider.notifier).addTask(
+          name: name,
+          icon: _icon,
+          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+          reminderTime: reminder,
+          activeWeekdays: activeWeekdays,
+        );
 
     if (mounted) Navigator.of(context).pop();
   }
@@ -189,6 +252,25 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
             children: [
+              if (!_isEditing) ...[
+                _staggered(0, Row(
+                  children: [
+                    Container(width: 28, height: 5, decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(width: 6),
+                    Container(width: 28, height: 5, decoration: BoxDecoration(color: accent.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4))),
+                  ],
+                )),
+                const SizedBox(height: 8),
+                _staggered(0, Text(
+                  'STEP 1 OF 2',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                )),
+                const SizedBox(height: 12),
+              ],
               // Title
               _staggered(0, ScreenTitle(
                 icon: _isEditing ? Icons.edit_rounded : Icons.add_task_rounded,
@@ -309,16 +391,33 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
                   ),
                 ],
               )),
+              if (_frequency == 'Custom') ...[
+                const SizedBox(height: 12),
+                _staggered(3, _CustomDayPicker(
+                  selected: _customDays,
+                  color: accent,
+                  onToggle: (day) => setState(() {
+                    if (_customDays.contains(day)) {
+                      _customDays.remove(day);
+                    } else {
+                      _customDays.add(day);
+                    }
+                  }),
+                )),
+              ],
               const SizedBox(height: 24),
 
-              // Reminder time
-              _staggered(4, _ReminderTimeField(
-                time: _reminderTime,
-                color: accent,
-                onTap: _pickTime,
-                onClear: () => setState(() => _reminderTime = null),
-              )),
-              const SizedBox(height: 24),
+              // Reminder time — inline only while editing; new habits set
+              // this in the dedicated (skippable) reminder step instead.
+              if (_isEditing) ...[
+                _staggered(4, _ReminderTimeField(
+                  time: _reminderTime,
+                  color: accent,
+                  onTap: _pickTime,
+                  onClear: () => setState(() => _reminderTime = null),
+                )),
+                const SizedBox(height: 24),
+              ],
 
               // Active toggle
               _staggered(4, _ActiveToggle(
@@ -370,7 +469,7 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
                 ],
               ),
               child: ElevatedButton(
-                onPressed: _save,
+                onPressed: _isEditing ? _save : _continueToReminderStep,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
@@ -383,15 +482,15 @@ class _AddEditTaskScreenState extends ConsumerState<AddEditTaskScreen>
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(_isEditing ? Icons.check_rounded : Icons.add_rounded),
-                    const SizedBox(width: 8),
                     Text(
-                      _isEditing ? 'Save Changes' : 'Add Habit',
+                      _isEditing ? 'Save Changes' : 'Continue',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Icon(_isEditing ? Icons.check_rounded : Icons.arrow_forward_rounded),
                   ],
                 ),
               ),
@@ -659,6 +758,54 @@ class _FrequencyChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Seven toggleable day circles (Mon…Sun) for the "Custom" frequency,
+/// keyed by [DateTime.weekday] values (1 = Monday … 7 = Sunday).
+class _CustomDayPicker extends StatelessWidget {
+  final Set<int> selected;
+  final Color color;
+  final ValueChanged<int> onToggle;
+
+  const _CustomDayPicker({required this.selected, required this.color, required this.onToggle});
+
+  static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (int day = 1; day <= 7; day++)
+          GestureDetector(
+            onTap: () => onToggle(day),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: selected.contains(day) ? color : Colors.transparent,
+                border: Border.all(
+                  color: selected.contains(day) ? color : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  width: 1.5,
+                ),
+              ),
+              child: Text(
+                _labels[day - 1],
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected.contains(day) ? Colors.white : colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

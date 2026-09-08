@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
-/// A single recurring daily habit/task.
+/// All seven weekdays, using [DateTime.weekday] values (1 = Monday … 7 =
+/// Sunday) — the default schedule, meaning "every day".
+const List<int> kAllWeekdays = [1, 2, 3, 4, 5, 6, 7];
+
+/// A single recurring habit/task.
 ///
 /// Extends [HiveObject] so Hive can persist this class directly.
 /// All fields are final — mutations create a new [Task] copy
@@ -16,6 +20,9 @@ import 'package:hive/hive.dart';
 ///   field 5: isActive (bool)
 ///   field 6: createdAt (DateTime)
 ///   field 7: lastUpdated (DateTime)
+///   field 8: activeWeekdays (`List<int>`) — DateTime.weekday values this
+///            habit is scheduled on; defaults to every day for records
+///            written before this field existed.
 class Task extends HiveObject {
   final String id;
   final String name;
@@ -25,6 +32,7 @@ class Task extends HiveObject {
   final bool isActive;
   final DateTime createdAt;
   final DateTime lastUpdated;
+  final List<int> activeWeekdays;
 
   Task({
     required this.id,
@@ -35,8 +43,10 @@ class Task extends HiveObject {
     this.isActive = true,
     DateTime? createdAt,
     DateTime? lastUpdated,
+    List<int>? activeWeekdays,
   })  : createdAt = createdAt ?? DateTime.now(),
-        lastUpdated = lastUpdated ?? DateTime.now();
+        lastUpdated = lastUpdated ?? DateTime.now(),
+        activeWeekdays = (activeWeekdays == null || activeWeekdays.isEmpty) ? kAllWeekdays : activeWeekdays;
 
   Task copyWith({
     String? name,
@@ -44,6 +54,7 @@ class Task extends HiveObject {
     String? notes,
     TimeOfDay? reminderTime,
     bool? isActive,
+    List<int>? activeWeekdays,
   }) {
     return Task(
       id: id,
@@ -54,6 +65,7 @@ class Task extends HiveObject {
       isActive: isActive ?? this.isActive,
       createdAt: createdAt,
       lastUpdated: DateTime.now(),
+      activeWeekdays: activeWeekdays ?? this.activeWeekdays,
     );
   }
 
@@ -62,6 +74,21 @@ class Task extends HiveObject {
   String get reminderDisplay {
     if (reminderTime == null) return 'Midnight';
     return '${reminderTime!.hour.toString().padLeft(2, '0')}:${reminderTime!.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Whether this habit is scheduled to happen on [date], per
+  /// [activeWeekdays].
+  bool isScheduledOn(DateTime date) => activeWeekdays.contains(date.weekday);
+
+  /// A short label describing the schedule, matching the presets offered
+  /// in the Add/Edit Habit screen ('Daily', 'Weekdays', 'Weekends') or
+  /// 'Custom' for any other combination.
+  String get frequencyLabel {
+    final set = activeWeekdays.toSet();
+    if (set.length == 7) return 'Daily';
+    if (set.length == 5 && set.containsAll(const [1, 2, 3, 4, 5])) return 'Weekdays';
+    if (set.length == 2 && set.containsAll(const [6, 7])) return 'Weekends';
+    return 'Custom';
   }
 }
 
@@ -85,13 +112,14 @@ class TaskAdapter extends TypeAdapter<Task> {
       isActive: fields[5] as bool,
       createdAt: fields[6] as DateTime,
       lastUpdated: fields[7] as DateTime,
+      activeWeekdays: (fields[8] as List?)?.cast<int>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Task obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -107,6 +135,8 @@ class TaskAdapter extends TypeAdapter<Task> {
       ..writeByte(6)
       ..write(obj.createdAt)
       ..writeByte(7)
-      ..write(obj.lastUpdated);
+      ..write(obj.lastUpdated)
+      ..writeByte(8)
+      ..write(obj.activeWeekdays);
   }
 }

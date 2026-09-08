@@ -60,14 +60,18 @@ int _longestStreakEver(List<TaskLog> logs) {
   return best;
 }
 
-/// Fraction of days in [days] that ended up "done" for [taskId].
-double _consistency(List<TaskLog> logs, String taskId, List<DateTime> days) {
+/// Fraction of [task]'s *scheduled* days within [days] that ended up
+/// "done" — off-schedule days (e.g. weekends for a Weekdays-only habit)
+/// aren't counted against it.
+double _consistency(List<TaskLog> logs, Task task, List<DateTime> days) {
+  final scheduledDays = days.where(task.isScheduledOn).toList();
+  if (scheduledDays.isEmpty) return 0;
   final doneDays = logs
-      .where((l) => l.taskId == taskId && l.status == LogStatus.done)
+      .where((l) => l.taskId == task.id && l.status == LogStatus.done)
       .map((l) => _startOfDay(l.date))
       .toSet();
-  if (days.isEmpty) return 0;
-  return (doneDays.length / days.length).clamp(0.0, 1.0);
+  final doneScheduledDays = scheduledDays.where(doneDays.contains).length;
+  return (doneScheduledDays / scheduledDays.length).clamp(0.0, 1.0);
 }
 
 ({String label, Color color}) _tierFor(double rate, int streak) {
@@ -117,11 +121,11 @@ class StreaksScreen extends ConsumerWidget {
     final bestEver = spotlightLogs.isEmpty ? spotlightStreak : math.max(_longestStreakEver(spotlightLogs), spotlightStreak);
     final overallConsistency = tasks.isEmpty
         ? 0.0
-        : tasks.map((t) => _consistency(allLogs30, t.id, last30)).reduce((a, b) => a + b) / tasks.length;
+        : tasks.map((t) => _consistency(allLogs30, t, last30)).reduce((a, b) => a + b) / tasks.length;
 
     final habitRows = tasks.map((t) {
       final streak = streaks[t.id] ?? 0;
-      final rate = _consistency(allLogs30, t.id, last30);
+      final rate = _consistency(allLogs30, t, last30);
       return (task: t, streak: streak, rate: rate);
     }).toList()
       ..sort((a, b) => b.streak.compareTo(a.streak));
@@ -245,6 +249,8 @@ class _HeroStreakCard extends StatefulWidget {
     required this.color,
   });
 
+  List<bool> get scheduled7 => last7.map(task.isScheduledOn).toList();
+
   @override
   State<_HeroStreakCard> createState() => _HeroStreakCardState();
 }
@@ -274,7 +280,9 @@ class _HeroStreakCardState extends State<_HeroStreakCard> with SingleTickerProvi
     final milestone = nextMilestoneFor(widget.streak);
     const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
     final today = _startOfDay(DateTime.now());
+    final scheduled7 = widget.scheduled7;
     final doneCount = widget.done7.where((d) => d).length;
+    final scheduledCount = scheduled7.where((s) => s).length;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -348,7 +356,7 @@ class _HeroStreakCardState extends State<_HeroStreakCard> with SingleTickerProvi
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('This week\'s check-ins', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: _muted)),
-                    Text('$doneCount / 7 Days', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _coralDeep)),
+                    Text('$doneCount / $scheduledCount Days', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _coralDeep)),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -359,6 +367,7 @@ class _HeroStreakCardState extends State<_HeroStreakCard> with SingleTickerProvi
                       _FlameNode(
                         label: labels[i],
                         lit: widget.done7[i],
+                        scheduled: scheduled7[i],
                         isToday: widget.last7[i] == today,
                         color: widget.color,
                         delay: Duration(milliseconds: 50 * i),
@@ -441,11 +450,19 @@ class _HeroStreakCardState extends State<_HeroStreakCard> with SingleTickerProvi
 class _FlameNode extends StatefulWidget {
   final String label;
   final bool lit;
+  final bool scheduled;
   final bool isToday;
   final Color color;
   final Duration delay;
 
-  const _FlameNode({required this.label, required this.lit, required this.isToday, required this.color, required this.delay});
+  const _FlameNode({
+    required this.label,
+    required this.lit,
+    required this.scheduled,
+    required this.isToday,
+    required this.color,
+    required this.delay,
+  });
 
   @override
   State<_FlameNode> createState() => _FlameNodeState();
@@ -497,14 +514,19 @@ class _FlameNodeState extends State<_FlameNode> with SingleTickerProviderStateMi
                       colors: widget.isToday ? [widget.color, Color.lerp(widget.color, Colors.black, 0.15)!] : [widget.color.withValues(alpha: 0.85), widget.color],
                     )
                   : null,
-              color: widget.lit ? null : const Color(0xFFEFEFF1),
-              border: widget.isToday ? Border.all(color: Colors.white, width: 2) : null,
+              color: widget.lit ? null : (widget.scheduled ? const Color(0xFFEFEFF1) : Colors.transparent),
+              border: widget.isToday
+                  ? Border.all(color: Colors.white, width: 2)
+                  : (widget.scheduled ? null : Border.all(color: const Color(0xFFD9DBDE), width: 1)),
               boxShadow: widget.lit && widget.isToday
                   ? [BoxShadow(color: widget.color.withValues(alpha: 0.45), blurRadius: 8, offset: const Offset(0, 3))]
                   : null,
             ),
             alignment: Alignment.center,
-            child: Text(widget.lit ? '🔥' : '', style: const TextStyle(fontSize: 12)),
+            child: Text(
+              widget.lit ? '🔥' : (widget.scheduled ? '' : '·'),
+              style: const TextStyle(fontSize: 12, color: Color(0xFFC2C6CB)),
+            ),
           ),
         ),
       ],
@@ -618,11 +640,25 @@ class _HabitRowState extends State<_HabitRow> with SingleTickerProviderStateMixi
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.task.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _charcoal),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.task.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _charcoal),
+                          ),
+                        ),
+                        if (widget.task.frequencyLabel != 'Daily') ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(color: _muted.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
+                            child: Text(widget.task.frequencyLabel, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _muted)),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Row(

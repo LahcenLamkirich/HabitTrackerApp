@@ -137,6 +137,7 @@ class StorageService {
     String? notes,
     TimeOfDay? reminderTime,
     bool isActive = true,
+    List<int>? activeWeekdays,
   }) async {
     final task = Task(
       id: _uuid.v4(),
@@ -145,6 +146,7 @@ class StorageService {
       notes: notes,
       reminderTime: reminderTime,
       isActive: isActive,
+      activeWeekdays: activeWeekdays,
     );
     await _tasksBox.put(task.id, task);
     return task;
@@ -238,6 +240,11 @@ class StorageService {
       return log.toTaskStatus();
     }
 
+    // Off-schedule days never count as missed — there was nothing due.
+    if (!task.isScheduledOn(date)) {
+      return TaskStatus.pending;
+    }
+
     // No log yet — check if we're past the reminder time today.
     final now = DateTime.now();
     final today = _startOfDay(now);
@@ -258,26 +265,38 @@ class StorageService {
   // Streak calculation
   // ──────────────────────────────────────────────────────────────────
 
-  /// Calculate the current streak (consecutive done days) for a task.
+  /// Calculate the current streak (consecutive scheduled days done) for a
+  /// task. Days the task isn't scheduled on (per [Task.activeWeekdays])
+  /// are skipped over rather than breaking the chain — a "Weekdays" habit
+  /// isn't penalized for weekends.
   int getStreak(String taskId) {
-    final logs = getLogsForTask(taskId)
-        .where((l) => l.status == LogStatus.done)
-        .toList();
+    final task = getTask(taskId);
+    if (task == null || task.activeWeekdays.isEmpty) return 0;
 
-    if (logs.isEmpty) return 0;
+    final doneDates = getLogsForTask(taskId)
+        .where((l) => l.status == LogStatus.done)
+        .map((l) => _startOfDay(l.date))
+        .toSet();
+
+    if (doneDates.isEmpty) return 0;
 
     int streak = 0;
     DateTime checkDate = _startOfDay(DateTime.now());
 
-    // If today isn't done yet, start from yesterday.
-    final todayLog = getLog(taskId, checkDate);
-    if (todayLog == null || todayLog.status != LogStatus.done) {
+    // If today is scheduled but not done yet, start from yesterday.
+    if (task.isScheduledOn(checkDate) && !doneDates.contains(checkDate)) {
       checkDate = checkDate.subtract(const Duration(days: 1));
     }
 
-    while (true) {
-      final log = getLog(taskId, checkDate);
-      if (log != null && log.status == LogStatus.done) {
+    // Safety bound so a data anomaly can't spin this into an infinite loop.
+    final earliestPossible = doneDates.reduce((a, b) => a.isBefore(b) ? a : b).subtract(const Duration(days: 7));
+
+    while (checkDate.isAfter(earliestPossible)) {
+      if (!task.isScheduledOn(checkDate)) {
+        checkDate = checkDate.subtract(const Duration(days: 1));
+        continue;
+      }
+      if (doneDates.contains(checkDate)) {
         streak++;
         checkDate = checkDate.subtract(const Duration(days: 1));
       } else {

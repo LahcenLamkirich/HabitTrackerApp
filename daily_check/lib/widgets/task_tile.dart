@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../helpers/icon_helper.dart';
+import '../screens/add_edit_task_screen.dart';
 
 /// A single row in the today's checklist — matches the new coral/white design.
 class TaskTile extends ConsumerWidget {
@@ -132,7 +133,51 @@ class TaskTile extends ConsumerWidget {
                     ),
                   ),
 
-                const SizedBox(width: 6),
+                const SizedBox(width: 2),
+
+                // Overflow menu — the discoverable way to edit or delete a
+                // habit (long-press on the row still works too).
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    icon: Icon(Icons.more_vert, size: 18, color: colorScheme.onSurfaceVariant),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'edit':
+                          _openEdit(context, task);
+                          break;
+                        case 'delete':
+                          _confirmDelete(context, ref, task);
+                          break;
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined, size: 18),
+                            SizedBox(width: 10),
+                            Text('Edit habit'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline, size: 18, color: Theme.of(ctx).colorScheme.error),
+                            const SizedBox(width: 10),
+                            Text('Delete habit', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
 
                 // Check mark or empty circle
                 Container(
@@ -160,5 +205,42 @@ class TaskTile extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _openEdit(BuildContext context, Task task) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddEditTaskScreen(task: task),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete habit?'),
+        content: const Text(
+          'This will also remove the history for this task. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              foregroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(taskNotifierProvider.notifier).deleteTask(task.id);
+    }
   }
 }

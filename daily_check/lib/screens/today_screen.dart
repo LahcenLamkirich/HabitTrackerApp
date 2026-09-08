@@ -21,17 +21,18 @@ class TodayScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tasks = ref.watch(activeTasksProvider);
+    final allTasks = ref.watch(activeTasksProvider);
+    final tasks = ref.watch(todayScheduledTasksProvider);
     final statuses = ref.watch(todayTaskStatusesProvider);
     final settings = ref.watch(settingsProvider);
 
-    final doneCount = statuses.values.where((s) => s == TaskStatus.done).length;
+    final doneCount = tasks.where((t) => statuses[t.id] == TaskStatus.done).length;
     final total = tasks.length;
     final progress = total == 0 ? 0.0 : doneCount / total;
 
-    // Calculate best streak from all tasks
+    // Calculate best streak across every habit, regardless of today's schedule.
     int bestStreak = 0;
-    for (final task in tasks) {
+    for (final task in allTasks) {
       final streak = ref.read(taskStreakProvider(task.id));
       if (streak > bestStreak) bestStreak = streak;
     }
@@ -70,9 +71,9 @@ class TodayScreen extends ConsumerWidget {
             ),
           ),
           if (tasks.isEmpty)
-            const SliverFillRemaining(
+            SliverFillRemaining(
               hasScrollBody: false,
-              child: _EmptyState(),
+              child: allTasks.isEmpty ? const _EmptyState() : const _NothingScheduledState(),
             )
           else
             SliverList.builder(
@@ -376,6 +377,66 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(
               'Tap + to add your first daily habit\nand start building streaks!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Manrope',
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: textMedium,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when the user has habits, but none of them are scheduled for
+/// today (e.g. all "Weekends"-only habits on a Tuesday) — distinct from
+/// [_EmptyState], which is for having no habits at all.
+class _NothingScheduledState extends StatelessWidget {
+  const _NothingScheduledState();
+
+  @override
+  Widget build(BuildContext context) {
+    const primary = Color(0xFFE85D30);
+    const textHigh = Color(0xFF1F2429);
+    const textMedium = Color(0xFF4B5563);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEDE6),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.self_improvement_rounded,
+                size: 36,
+                color: primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Nothing scheduled today',
+              style: TextStyle(
+                fontFamily: 'Outfit',
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: textHigh,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'None of your habits are set to run today.\nEnjoy the day off!',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Manrope',

@@ -313,7 +313,7 @@ class _LoadingBarState extends State<_LoadingBar> with SingleTickerProviderState
   @override
   void initState() {
     super.initState();
-    _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))..repeat();
+    _shimmer = AnimationController(vsync: this, duration: const Duration(milliseconds: 2500))..repeat();
   }
 
   @override
