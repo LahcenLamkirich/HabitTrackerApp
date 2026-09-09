@@ -78,9 +78,24 @@ class NotificationService {
     _initialized = true;
   }
 
-  /// Compute a deterministic 31-bit positive notification id for a task.
-  int _idForTask(String taskId) {
-    return taskId.hashCode & 0x7FFFFFFF;
+  /// Compute a deterministic, low-order positive hash for a task, reserved
+  /// to the low 20 bits so it can be combined with weekday/kind flags above
+  /// it without ever colliding.
+  int _baseIdForTask(String taskId) {
+    return taskId.hashCode & 0x000FFFFF;
+  }
+
+  /// Notification id for the daily-reminder occurrence on a specific
+  /// [weekday] (1 = Monday … 7 = Sunday). Each weekday gets its own
+  /// scheduled notification so a habit's active-days schedule (e.g.
+  /// "Weekends only") is actually respected.
+  int _reminderIdForWeekday(String taskId, int weekday) {
+    return 0x01000000 | (weekday << 20) | _baseIdForTask(taskId);
+  }
+
+  /// Notification id for the one-shot follow-up reminder.
+  int _followUpIdForTask(String taskId) {
+    return 0x40000000 | _baseIdForTask(taskId);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -128,24 +143,28 @@ class NotificationService {
     if (!task.isActive) return;
     if (task.reminderTime == null) return;
 
-    final time = _nextInstanceOfTime(task.reminderTime!);
-    final id = _idForTask(task.id);
+    // Schedule one recurring notification per active weekday so habits
+    // that only run on e.g. weekends don't get pinged every day.
+    for (final weekday in task.activeWeekdays) {
+      final time = _nextInstanceOfWeekdayAndTime(weekday, task.reminderTime!);
+      final id = _reminderIdForWeekday(task.id, weekday);
 
-    try {
-      await _plugin.zonedSchedule(
-        id,
-        task.name,
-        task.notes ?? 'Time for your daily check',
-        time,
-        _details(),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.time,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Failed to schedule reminder for ${task.id}: $e');
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          task.name,
+          task.notes ?? 'Time for your daily check',
+          time,
+          _details(),
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Failed to schedule reminder for ${task.id}: $e');
+        }
       }
     }
   }
@@ -165,7 +184,7 @@ class NotificationService {
     if (hours <= 0) return;
 
     final time = tz.TZDateTime.now(tz.local).add(Duration(hours: hours));
-    final id = _idForTask(task.id) | 0x40000000;
+    final id = _followUpIdForTask(task.id);
 
     try {
       await _plugin.zonedSchedule(
@@ -191,15 +210,15 @@ class NotificationService {
 
   Future<void> cancelForTask(String taskId) async {
     if (kIsWeb) return;
-    final id = _idForTask(taskId);
-    await _plugin.cancel(id);
-    await _plugin.cancel(id | 0x40000000);
+    for (final weekday in kAllWeekdays) {
+      await _plugin.cancel(_reminderIdForWeekday(taskId, weekday));
+    }
+    await _plugin.cancel(_followUpIdForTask(taskId));
   }
 
   Future<void> cancelFollowUp(String taskId) async {
     if (kIsWeb) return;
-    final id = _idForTask(taskId) | 0x40000000;
-    await _plugin.cancel(id);
+    await _plugin.cancel(_followUpIdForTask(taskId));
   }
 
   Future<void> cancelAll() async {
@@ -246,7 +265,9 @@ class NotificationService {
     );
   }
 
-  tz.TZDateTime _nextInstanceOfTime(TimeOfDay time) {
+  /// Next occurrence of [time] on the given [weekday] (1 = Monday …
+  /// 7 = Sunday), using [DateTime.weekday] numbering.
+  tz.TZDateTime _nextInstanceOfWeekdayAndTime(int weekday, TimeOfDay time) {
     final now = tz.TZDateTime.now(tz.local);
     var scheduled = tz.TZDateTime(
       tz.local,
@@ -256,7 +277,7 @@ class NotificationService {
       time.hour,
       time.minute,
     );
-    if (scheduled.isBefore(now)) {
+    while (scheduled.weekday != weekday || scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }
     return scheduled;

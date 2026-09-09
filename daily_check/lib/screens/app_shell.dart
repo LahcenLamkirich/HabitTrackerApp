@@ -157,7 +157,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-class _NavItem extends StatelessWidget {
+class _NavItem extends StatefulWidget {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
@@ -177,29 +177,96 @@ class _NavItem extends StatelessWidget {
   });
 
   @override
+  State<_NavItem> createState() => _NavItemState();
+}
+
+class _NavItemState extends State<_NavItem> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _bounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _bounce = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.25), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.25, end: 1.0), weight: 60),
+    ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    if (widget.isSelected) _controller.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(covariant _NavItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSelected && !oldWidget.isSelected) {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isSelected ? selectedIcon : icon,
-            color: isSelected ? selectedColor : inactiveColor,
-            size: 24,
+          AnimatedBuilder(
+            animation: _bounce,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: widget.isSelected ? _bounce.value : 1.0,
+                child: child,
+              );
+            },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: animation,
+                child: FadeTransition(opacity: animation, child: child),
+              ),
+              child: Icon(
+                widget.isSelected ? widget.selectedIcon : widget.icon,
+                key: ValueKey(widget.isSelected),
+                color: widget.isSelected ? widget.selectedColor : widget.inactiveColor,
+                size: 24,
+              ),
+            ),
           ),
           const SizedBox(height: 4),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 200),
             style: TextStyle(
               fontFamily: 'Manrope',
               fontSize: 11,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? selectedColor : inactiveColor,
+              fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w500,
+              color: widget.isSelected ? widget.selectedColor : widget.inactiveColor,
               letterSpacing: 0.3,
+            ),
+            child: Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(height: 3),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            height: 4,
+            width: widget.isSelected ? 4 : 0,
+            decoration: BoxDecoration(
+              color: widget.selectedColor,
+              shape: BoxShape.circle,
             ),
           ),
         ],
