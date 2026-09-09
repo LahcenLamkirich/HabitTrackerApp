@@ -39,57 +39,60 @@ class TodayScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9F7F4),
-      body: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: ScreenTitle(
-                icon: Icons.task_alt_rounded,
-                color: const Color(0xFFE85D30),
-                title: 'Daily Check',
-                subtitle: 'Your daily habit checklist',
-                trailing: Icon(
-                  settings.notificationsEnabled
-                      ? Icons.notifications_active_outlined
-                      : Icons.notifications_off_outlined,
-                  color: settings.notificationsEnabled
-                      ? const Color(0xFF1F2429)
-                      : const Color(0xFF9CA3AF),
+      body: SafeArea(
+        bottom: false,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                child: ScreenTitle(
+                  icon: Icons.task_alt_rounded,
+                  color: const Color(0xFFE85D30),
+                  title: 'Daily Check',
+                  subtitle: 'Your daily habit checklist',
+                  trailing: Icon(
+                    settings.notificationsEnabled
+                        ? Icons.notifications_active_outlined
+                        : Icons.notifications_off_outlined,
+                    color: settings.notificationsEnabled
+                        ? const Color(0xFF1F2429)
+                        : const Color(0xFF9CA3AF),
+                  ),
                 ),
               ),
             ),
-          ),
-          SliverToBoxAdapter(
-            child: _Header(
-              date: DateTime.now(),
-              doneCount: doneCount,
-              total: total,
-              progress: progress,
-              bestStreak: bestStreak,
+            SliverToBoxAdapter(
+              child: _Header(
+                date: DateTime.now(),
+                doneCount: doneCount,
+                total: total,
+                progress: progress,
+                bestStreak: bestStreak,
+              ),
             ),
-          ),
-          if (tasks.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: allTasks.isEmpty ? const _EmptyState() : const _NothingScheduledState(),
-            )
-          else
-            SliverList.builder(
-              itemCount: tasks.length,
-              itemBuilder: (context, i) {
-                final task = tasks[i];
-                final status = statuses[task.id] ?? TaskStatus.pending;
-                return TaskTile(
-                  task: task,
-                  onTap: () => _onToggle(context, ref, task, status),
-                  onLongPress: () => _openEdit(context, task),
-                );
-              },
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
-        ],
+            if (tasks.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: allTasks.isEmpty ? const _EmptyState() : const _NothingScheduledState(),
+              )
+            else
+              SliverList.builder(
+                itemCount: tasks.length,
+                itemBuilder: (context, i) {
+                  final task = tasks[i];
+                  final status = statuses[task.id] ?? TaskStatus.pending;
+                  return TaskTile(
+                    task: task,
+                    onTap: () => _onToggle(context, ref, task, status),
+                    onLongPress: () => _openEdit(context, task),
+                  );
+                },
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          ],
+        ),
       ),
     );
   }
@@ -158,7 +161,7 @@ class _Header extends StatelessWidget {
     const trackBg = Color(0xFFF2EBE5);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

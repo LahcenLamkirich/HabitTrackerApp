@@ -74,7 +74,7 @@ class AnalyticsScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 80),
           children: [
             const ScreenTitle(
               icon: Icons.insights_rounded,

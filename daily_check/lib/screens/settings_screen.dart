@@ -44,121 +44,124 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             .fold<int>(0, (a, b) => a > b ? a : b);
 
     return Scaffold(
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-        children: [
-          const ScreenTitle(
-            icon: Icons.person_rounded,
-            color: Color(0xFF6C63FF),
-            title: 'Profile',
-            subtitle: 'Manage habits, reminders & preferences',
-          ),
-          const SizedBox(height: 16),
-          _ProfileHeader(
-            controller: _entrance,
-            habitCount: tasks.length,
-            bestStreak: bestStreak,
-          ),
-          const SizedBox(height: 24),
-
-          _AnimatedSection(
-            controller: _entrance,
-            index: 0,
-            title: 'Notifications',
-            children: [
-              _SettingTile(
-                icon: Icons.notifications_rounded,
-                iconColor: const Color(0xFFE85D30),
-                title: 'Enable reminders',
-                subtitle: 'Show daily reminder notifications',
-                trailing: Switch.adaptive(
-                  value: settings.notificationsEnabled,
-                  onChanged: (value) {
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setNotificationsEnabled(value);
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 80),
+          children: [
+            const ScreenTitle(
+              icon: Icons.person_rounded,
+              color: Color(0xFF6C63FF),
+              title: 'Profile',
+              subtitle: 'Manage habits, reminders & preferences',
+            ),
+            const SizedBox(height: 16),
+            _ProfileHeader(
+              controller: _entrance,
+              habitCount: tasks.length,
+              bestStreak: bestStreak,
+            ),
+            const SizedBox(height: 24),
+  
+            _AnimatedSection(
+              controller: _entrance,
+              index: 0,
+              title: 'Notifications',
+              children: [
+                _SettingTile(
+                  icon: Icons.notifications_rounded,
+                  iconColor: const Color(0xFFE85D30),
+                  title: 'Enable reminders',
+                  subtitle: 'Show daily reminder notifications',
+                  trailing: Switch.adaptive(
+                    value: settings.notificationsEnabled,
+                    onChanged: (value) {
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setNotificationsEnabled(value);
+                    },
+                  ),
+                ),
+                _SettingTile(
+                  icon: Icons.access_time_filled_rounded,
+                  iconColor: const Color(0xFF3A86FF),
+                  title: 'Default reminder time',
+                  subtitle: settings.defaultReminderTime == null
+                      ? 'Not set (use per-task)'
+                      : _formatTime(settings.defaultReminderTime!),
+                  trailing: settings.defaultReminderTime != null
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          onPressed: () {
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setDefaultReminderTime(null);
+                          },
+                        )
+                      : const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    final picked = await showTimePicker(
+                      context: context,
+                      initialTime: settings.defaultReminderTime ?? TimeOfDay.now(),
+                    );
+                    if (picked != null) {
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setDefaultReminderTime(picked);
+                    }
                   },
                 ),
-              ),
-              _SettingTile(
-                icon: Icons.access_time_filled_rounded,
-                iconColor: const Color(0xFF3A86FF),
-                title: 'Default reminder time',
-                subtitle: settings.defaultReminderTime == null
-                    ? 'Not set (use per-task)'
-                    : _formatTime(settings.defaultReminderTime!),
-                trailing: settings.defaultReminderTime != null
-                    ? IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        onPressed: () {
-                          ref
-                              .read(settingsProvider.notifier)
-                              .setDefaultReminderTime(null);
-                        },
-                      )
-                    : const Icon(Icons.chevron_right_rounded),
-                onTap: () async {
-                  final picked = await showTimePicker(
-                    context: context,
-                    initialTime: settings.defaultReminderTime ?? TimeOfDay.now(),
-                  );
-                  if (picked != null) {
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setDefaultReminderTime(picked);
-                  }
-                },
-              ),
-              _SettingTile(
-                icon: Icons.notifications_active_rounded,
-                iconColor: const Color(0xFFFFB703),
-                title: 'Follow-up reminder',
-                subtitle: settings.followUpAfterHours == null
-                    ? 'Off'
-                    : '${settings.followUpAfterHours} hours after reminder',
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () async {
-                  await _showFollowUpPicker(
-                      context, ref, settings.followUpAfterHours);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          _AnimatedSection(
-            controller: _entrance,
-            index: 1,
-            title: 'Day reset',
-            children: [
-              _SettingTile(
-                icon: Icons.calendar_today_rounded,
-                iconColor: const Color(0xFF2EC4B6),
-                title: 'Day starts at',
-                subtitle: _formatHour(settings.dayResetHour),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () async {
-                  await _showHourPicker(context, ref, settings.dayResetHour);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          _AnimatedSection(
-            controller: _entrance,
-            index: 2,
-            title: 'About',
-            children: [
-              _SettingTile(
-                icon: Icons.local_fire_department_rounded,
-                iconColor: const Color(0xFFEF476F),
-                title: 'Daily Check',
-                subtitle: 'Version 1.0.0',
-              ),
-            ],
-          ),
-        ],
+                _SettingTile(
+                  icon: Icons.notifications_active_rounded,
+                  iconColor: const Color(0xFFFFB703),
+                  title: 'Follow-up reminder',
+                  subtitle: settings.followUpAfterHours == null
+                      ? 'Off'
+                      : '${settings.followUpAfterHours} hours after reminder',
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    await _showFollowUpPicker(
+                        context, ref, settings.followUpAfterHours);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+  
+            _AnimatedSection(
+              controller: _entrance,
+              index: 1,
+              title: 'Day reset',
+              children: [
+                _SettingTile(
+                  icon: Icons.calendar_today_rounded,
+                  iconColor: const Color(0xFF2EC4B6),
+                  title: 'Day starts at',
+                  subtitle: _formatHour(settings.dayResetHour),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () async {
+                    await _showHourPicker(context, ref, settings.dayResetHour);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+  
+            _AnimatedSection(
+              controller: _entrance,
+              index: 2,
+              title: 'About',
+              children: [
+                _SettingTile(
+                  icon: Icons.local_fire_department_rounded,
+                  iconColor: const Color(0xFFEF476F),
+                  title: 'Daily Check',
+                  subtitle: 'Version 1.0.0',
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
