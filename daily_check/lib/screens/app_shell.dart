@@ -43,7 +43,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Mindful Habit Track tokens
     const primary = Color(0xFFE85D30);
     const secondary = Color(0xFFFF8A65);
-    const textHigh = Color(0xFF1F2429);
     const inactive = Color(0xFF9CA3AF);
 
     return Scaffold(
