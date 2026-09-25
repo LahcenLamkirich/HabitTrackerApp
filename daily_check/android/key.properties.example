@@ -1,0 +1,12 @@
+# Copy this file to android/key.properties and fill in your real values.
+#
+# key.properties is gitignored and must stay that way: it holds the passwords
+# to the keystore that identifies your app to Google Play. Never commit it.
+#
+# storeFile is resolved relative to the android/app directory, so a keystore
+# at android/upload-keystore.jks is written as ../upload-keystore.jks.
+
+storePassword=your-keystore-password
+keyPassword=your-key-password
+keyAlias=upload
+storeFile=../upload-keystore.jks
