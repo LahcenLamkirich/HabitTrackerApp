@@ -1,3 +1,8 @@
+// prefer_initializing_formals cannot be satisfied by DayResetService's
+// constructor: the fields it assigns are private and the parameters are named,
+// and Dart forbids named parameters that start with an underscore.
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';

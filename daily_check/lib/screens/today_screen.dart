@@ -111,15 +111,6 @@ class TodayScreen extends ConsumerWidget {
     }
   }
 
-  void _openAdd(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const AddEditTaskScreen(),
-        fullscreenDialog: true,
-      ),
-    );
-  }
-
   void _openEdit(BuildContext context, Task task) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -154,7 +145,6 @@ class _Header extends StatelessWidget {
 
     // Stitch tokens
     const primary = Color(0xFFE85D30);
-    const secondary = Color(0xFFFF8A65);
     const tertiary = Color(0xFFFFEDE6);
     const textHigh = Color(0xFF1F2429);
     const textMedium = Color(0xFF4B5563);

@@ -66,14 +66,17 @@ class NotificationService {
       iOS: iosInit,
     );
 
-    await _plugin.initialize(initSettings);
+    await _plugin.initialize(settings: initSettings);
 
     // Android 13+ requires runtime permission.
     final androidImpl =
         _plugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.requestNotificationsPermission();
-    await androidImpl?.requestExactAlarmsPermission();
+    // Deliberately NOT requesting SCHEDULE_EXACT_ALARM: every reminder is
+    // scheduled with AndroidScheduleMode.inexactAllowWhileIdle, so the exact
+    // alarm permission would be an unused, policy-sensitive request that Play
+    // requires a permitted-use justification for.
 
     _initialized = true;
   }
@@ -151,15 +154,13 @@ class NotificationService {
 
       try {
         await _plugin.zonedSchedule(
-          id,
-          task.name,
-          task.notes ?? 'Time for your daily check',
-          time,
-          _details(),
+          id: id,
+          title: task.name,
+          body: task.notes ?? 'Time for your daily check',
+          scheduledDate: time,
+          notificationDetails: _details(),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
         );
       } catch (e) {
         if (kDebugMode) {
@@ -188,14 +189,12 @@ class NotificationService {
 
     try {
       await _plugin.zonedSchedule(
-        id,
-        '${task.name} (reminder)',
-        task.notes ?? "You haven't marked this done yet",
-        time,
-        _details(),
+        id: id,
+        title: '${task.name} (reminder)',
+        body: task.notes ?? "You haven't marked this done yet",
+        scheduledDate: time,
+        notificationDetails: _details(),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
       );
     } catch (e) {
       if (kDebugMode) {
@@ -211,14 +210,14 @@ class NotificationService {
   Future<void> cancelForTask(String taskId) async {
     if (kIsWeb) return;
     for (final weekday in kAllWeekdays) {
-      await _plugin.cancel(_reminderIdForWeekday(taskId, weekday));
+      await _plugin.cancel(id: _reminderIdForWeekday(taskId, weekday));
     }
-    await _plugin.cancel(_followUpIdForTask(taskId));
+    await _plugin.cancel(id: _followUpIdForTask(taskId));
   }
 
   Future<void> cancelFollowUp(String taskId) async {
     if (kIsWeb) return;
-    await _plugin.cancel(_followUpIdForTask(taskId));
+    await _plugin.cancel(id: _followUpIdForTask(taskId));
   }
 
   Future<void> cancelAll() async {

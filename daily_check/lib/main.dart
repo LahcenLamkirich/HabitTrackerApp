@@ -100,8 +100,6 @@ class App extends ConsumerWidget {
     const surfaceCanvas = Color(0xFFF9F7F4);  // Warm bone/cream
     const surfaceCard = Color(0xFFFFFFFF);   // Pure white
     const textHigh = Color(0xFF1F2429);      // Charcoal
-    const textMedium = Color(0xFF4B5563);    // Neutral gray
-    const borderOutline = Color(0xFFE5E0D8); // Warm outline
 
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,

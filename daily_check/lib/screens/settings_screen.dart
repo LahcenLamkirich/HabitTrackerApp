@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
+import '../services/services.dart';
 import '../widgets/screen_title.dart';
 
 /// The Profile / Settings screen — an animated header summarizing the
@@ -150,6 +151,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             _AnimatedSection(
               controller: _entrance,
               index: 2,
+              title: 'Your data',
+              children: [
+                _SettingTile(
+                  icon: Icons.ios_share_rounded,
+                  iconColor: const Color(0xFF3D8BFD),
+                  title: 'Back up my habits',
+                  subtitle: 'Save a copy of every habit and streak',
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _exportBackup,
+                ),
+                _SettingTile(
+                  icon: Icons.restore_rounded,
+                  iconColor: const Color(0xFFF4A261),
+                  title: 'Restore from a backup',
+                  subtitle: 'Replaces everything currently in the app',
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: _importBackup,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            _AnimatedSection(
+              controller: _entrance,
+              index: 3,
               title: 'About',
               children: [
                 _SettingTile(
@@ -162,6 +188,80 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Backup / restore
+  // ──────────────────────────────────────────────────────────────────
+
+  Future<void> _exportBackup() async {
+    try {
+      final saved = await ref.read(backupProvider).exportToFile();
+      if (!saved || !mounted) return;
+      _showMessage("Backup saved.");
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage("Couldn't create the backup: $e", isError: true);
+    }
+  }
+
+  Future<void> _importBackup() async {
+    // Restoring throws away whatever is in the app right now, so it needs an
+    // explicit yes before the file picker even opens.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore from a backup?'),
+        content: const Text(
+          'This replaces every habit and all history currently in Daily Check '
+          'with the contents of the backup file. It cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Choose file'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final result = await ref.read(backupProvider).pickAndImport();
+      if (result == null) return; // user cancelled the picker
+
+      // Storage changed underneath every provider, so rebuild the world and
+      // re-arm notifications for the habits that just arrived.
+      ref.invalidate(settingsProvider);
+      ref.read(tasksVersionProvider.notifier).state++;
+      await ref.read(notificationProvider).rescheduleAll(
+            storage.activeTasks,
+            settings: storage.settings,
+          );
+
+      if (!mounted) return;
+      _showMessage('Restored ${result.tasks} habits '
+          'and ${result.logs} days of history.');
+    } on BackupFormatException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message, isError: true);
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage("Couldn't restore that backup: $e", isError: true);
+    }
+  }
+
+  void _showMessage(String text, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        backgroundColor: isError ? const Color(0xFFB3261E) : null,
       ),
     );
   }

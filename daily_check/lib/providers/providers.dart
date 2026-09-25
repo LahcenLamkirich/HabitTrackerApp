@@ -10,16 +10,17 @@ late final NotificationService notifications;
 late final DayResetService dayReset;
 
 /// Provider: the StorageService instance.
-@override
 final storageProvider = Provider<StorageService>((ref) => storage);
 
+/// Provider: exports and restores the user's data. Built on demand since it
+/// holds no state of its own.
+final backupProvider = Provider<BackupService>((ref) => BackupService(storage));
+
 /// Provider: the NotificationService instance.
-@override
 final notificationProvider =
     Provider<NotificationService>((ref) => notifications);
 
 /// Provider: the DayResetService instance.
-@override
 final dayResetProvider =
     Provider<DayResetService>((ref) => dayReset);
 
@@ -73,7 +74,6 @@ class SettingsNotifier extends Notifier<Settings> {
   }
 }
 
-@override
 final settingsProvider =
     NotifierProvider<SettingsNotifier, Settings>(SettingsNotifier.new);
 
@@ -82,18 +82,15 @@ final settingsProvider =
 // ──────────────────────────────────────────────────────────────────
 
 /// Refresh trigger — incrementing this invalidates the tasks cache.
-@override
 final tasksVersionProvider = StateProvider<int>((ref) => 0);
 
 /// All active tasks, in insertion order.
-@override
 final activeTasksProvider = Provider<List<Task>>((ref) {
   ref.watch(tasksVersionProvider);
   return storage.activeTasks;
 });
 
 /// All tasks (including paused).
-@override
 final allTasksProvider = Provider<List<Task>>((ref) {
   ref.watch(tasksVersionProvider);
   return storage.allTasks;
@@ -101,7 +98,6 @@ final allTasksProvider = Provider<List<Task>>((ref) {
 
 /// Active tasks scheduled for today, per each task's [Task.activeWeekdays]
 /// — what the Today checklist should actually show.
-@override
 final todayScheduledTasksProvider = Provider<List<Task>>((ref) {
   final tasks = ref.watch(activeTasksProvider);
   final today = DateTime.now();
@@ -225,7 +221,6 @@ class TaskNotifier extends Notifier<void> {
   }
 }
 
-@override
 final taskNotifierProvider =
     NotifierProvider<TaskNotifier, void>(TaskNotifier.new);
 
@@ -234,7 +229,6 @@ final taskNotifierProvider =
 // ──────────────────────────────────────────────────────────────────
 
 /// All today's logs, keyed by taskId.
-@override
 final todayLogsProvider = Provider<Map<String, TaskLog>>((ref) {
   ref.watch(tasksVersionProvider);
   final logs = storage.getLogsForDate(DateTime.now());
@@ -242,7 +236,6 @@ final todayLogsProvider = Provider<Map<String, TaskLog>>((ref) {
 });
 
 /// Logs for a specific date (calendar / history).
-@override
 final logsForDateProvider =
     Provider.family<List<TaskLog>, DateTime>((ref, date) {
   ref.watch(tasksVersionProvider);
@@ -250,7 +243,6 @@ final logsForDateProvider =
 });
 
 /// Effective status for a task on a given date.
-@override
 final taskStatusProvider =
     Provider.family<TaskStatus, (String taskId, DateTime date)>((ref, params) {
   ref.watch(todayLogsProvider);
@@ -260,7 +252,6 @@ final taskStatusProvider =
 });
 
 /// Streak for a specific task.
-@override
 final taskStreakProvider =
     Provider.family<int, String>((ref, taskId) {
   ref.watch(todayLogsProvider);
@@ -272,9 +263,10 @@ final taskStreakProvider =
 // ──────────────────────────────────────────────────────────────────
 
 /// A display-friendly map of today's taskId → TaskStatus.
-@override
 final todayTaskStatusesProvider = Provider<Map<String, TaskStatus>>((ref) {
-  final logs = ref.watch(todayLogsProvider);
+  // Watched for invalidation only: the statuses below are derived from
+  // storage, but must be recomputed whenever today's logs change.
+  ref.watch(todayLogsProvider);
   final tasks = ref.watch(activeTasksProvider);
   final settings = ref.read(settingsProvider);
   final today = DateTime.now();
