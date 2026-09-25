@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../helpers/date_utils.dart';
 import '../helpers/icon_helper.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
@@ -33,14 +34,13 @@ const _badgeDefs = [
   (days: 365, icon: '🔱', title: '365-Day', subtitle: 'Immortal', colors: [Color(0xFFE85D30), Color(0xFFFFB08A)]),
 ];
 
-DateTime _startOfDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
 /// Longest run of consecutive done-days across a task's entire history
 /// (not just the currently-active streak).
 int _longestStreakEver(List<TaskLog> logs) {
   final doneDays = logs
       .where((l) => l.status == LogStatus.done)
-      .map((l) => _startOfDay(l.date))
+      .map((l) => startOfDay(l.date))
       .toSet()
       .toList()
     ..sort();
@@ -49,7 +49,9 @@ int _longestStreakEver(List<TaskLog> logs) {
   int current = 0;
   DateTime? prev;
   for (final d in doneDays) {
-    if (prev != null && d.difference(prev).inDays == 1) {
+    // calendarDaysBetween, not Duration.inDays: a 23-hour daylight-saving
+    // day truncates to 0 and would break an unbroken run.
+    if (prev != null && calendarDaysBetween(prev, d) == 1) {
       current++;
     } else {
       current = 1;
@@ -68,7 +70,7 @@ double _consistency(List<TaskLog> logs, Task task, List<DateTime> days) {
   if (scheduledDays.isEmpty) return 0;
   final doneDays = logs
       .where((l) => l.taskId == task.id && l.status == LogStatus.done)
-      .map((l) => _startOfDay(l.date))
+      .map((l) => startOfDay(l.date))
       .toSet();
   final doneScheduledDays = scheduledDays.where(doneDays.contains).length;
   return (doneScheduledDays / scheduledDays.length).clamp(0.0, 1.0);
@@ -108,15 +110,15 @@ class StreaksScreen extends ConsumerWidget {
     final spotlightColor = _accentColors[spotlightIndex % _accentColors.length];
     final spotlightLogs = storage.getLogsForTask(spotlightTask.id);
 
-    final now = _startOfDay(DateTime.now());
-    final last7 = List.generate(7, (i) => now.subtract(Duration(days: 6 - i)));
-    final last30 = List.generate(30, (i) => now.subtract(Duration(days: 29 - i)));
+    final now = startOfDay(DateTime.now());
+    final last7 = List.generate(7, (i) => addDays(now, i - 6));
+    final last30 = List.generate(30, (i) => addDays(now, i - 29));
     final allLogs30 = last30.expand((day) => ref.watch(logsForDateProvider(day))).toList();
 
     final spotlightDone7 = last7.map((d) {
-      return spotlightLogs.any((l) => l.status == LogStatus.done && _startOfDay(l.date) == d);
+      return spotlightLogs.any((l) => l.status == LogStatus.done && startOfDay(l.date) == d);
     }).toList();
-    final startDate = spotlightStreak > 0 ? now.subtract(Duration(days: spotlightStreak - 1)) : null;
+    final startDate = spotlightStreak > 0 ? addDays(now, -(spotlightStreak - 1)) : null;
 
     final bestEver = spotlightLogs.isEmpty ? spotlightStreak : math.max(_longestStreakEver(spotlightLogs), spotlightStreak);
     final overallConsistency = tasks.isEmpty
@@ -279,7 +281,7 @@ class _HeroStreakCardState extends State<_HeroStreakCard> with SingleTickerProvi
   Widget build(BuildContext context) {
     final milestone = nextMilestoneFor(widget.streak);
     const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final today = _startOfDay(DateTime.now());
+    final today = startOfDay(DateTime.now());
     final scheduled7 = widget.scheduled7;
     final doneCount = widget.done7.where((d) => d).length;
     final scheduledCount = scheduled7.where((s) => s).length;

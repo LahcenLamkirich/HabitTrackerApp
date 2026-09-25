@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
+import '../helpers/date_utils.dart';
 import '../models/models.dart';
 
 /// The single source of truth for all persisted data in Daily Check.
@@ -37,20 +38,32 @@ class StorageService {
 
   /// Initialize Hive and register all adapters. Call this exactly once
   /// in [main] before [runApp].
-  static Future<StorageService> init() async {
-    await Hive.initFlutter();
+  /// [hivePath] exists for tests, which have no plugin channels and so
+  /// cannot use [Hive.initFlutter]; production callers omit it.
+  static Future<StorageService> init({String? hivePath}) async {
+    if (hivePath == null) {
+      await Hive.initFlutter();
+    } else {
+      Hive.init(hivePath);
+    }
 
-    // Register type adapters before opening any box.
-    Hive.registerAdapter(TaskAdapter());
-    Hive.registerAdapter(TaskLogAdapter());
-    Hive.registerAdapter(LogStatusAdapter());
-    Hive.registerAdapter(TimeOfDayAdapter());
-    Hive.registerAdapter(SettingsAdapter());
+    // Register type adapters before opening any box. Guarded because Hive
+    // throws on a duplicate typeId, and tests re-init between cases.
+    void register<T>(TypeAdapter<T> adapter) {
+      if (!Hive.isAdapterRegistered(adapter.typeId)) {
+        Hive.registerAdapter(adapter);
+      }
+    }
+
+    register(TaskAdapter());
+    register(TaskLogAdapter());
+    register(LogStatusAdapter());
+    register(TimeOfDayAdapter());
+    register(SettingsAdapter());
 
     final service = StorageService();
     await service._openBoxes();
     await service._ensureSettings();
-    await service._seedSampleTasksIfEmpty();
 
     return service;
   }
@@ -64,50 +77,6 @@ class StorageService {
   Future<void> _ensureSettings() async {
     if (!_settingsBox.containsKey(_settingsKey)) {
       await _settingsBox.put(_settingsKey, Settings());
-    }
-  }
-
-  /// Seed the app with sensible defaults on first launch so it's not empty.
-  Future<void> _seedSampleTasksIfEmpty() async {
-    if (_tasksBox.isNotEmpty) return;
-
-    final sampleTasks = [
-      Task(
-        id: _uuid.v4(),
-        name: 'Take creatine',
-        notes: '1 scoop',
-        icon: 'supplements',
-        reminderTime: const TimeOfDay(hour: 8, minute: 0),
-        isActive: true,
-      ),
-      Task(
-        id: _uuid.v4(),
-        name: 'Drink water',
-        notes: '8 glasses',
-        icon: 'water',
-        reminderTime: null, // reset at midnight
-        isActive: true,
-      ),
-      Task(
-        id: _uuid.v4(),
-        name: 'Stretch',
-        notes: '5–10 minutes',
-        icon: 'fitness',
-        reminderTime: const TimeOfDay(hour: 9, minute: 0),
-        isActive: true,
-      ),
-      Task(
-        id: _uuid.v4(),
-        name: 'Take vitamins',
-        notes: 'With breakfast',
-        icon: 'medication',
-        reminderTime: const TimeOfDay(hour: 7, minute: 30),
-        isActive: true,
-      ),
-    ];
-
-    for (final task in sampleTasks) {
-      await _tasksBox.put(task.id, task);
     }
   }
 
@@ -283,22 +252,28 @@ class StorageService {
     int streak = 0;
     DateTime checkDate = _startOfDay(DateTime.now());
 
+    // Walking backwards uses calendar arithmetic, not Duration arithmetic:
+    // stepping by 24 hours across a daylight-saving change lands an hour off
+    // midnight, and would then match none of the normalised dates in
+    // doneDates — silently breaking the streak. See helpers/date_utils.dart.
+
     // If today is scheduled but not done yet, start from yesterday.
     if (task.isScheduledOn(checkDate) && !doneDates.contains(checkDate)) {
-      checkDate = checkDate.subtract(const Duration(days: 1));
+      checkDate = previousDay(checkDate);
     }
 
     // Safety bound so a data anomaly can't spin this into an infinite loop.
-    final earliestPossible = doneDates.reduce((a, b) => a.isBefore(b) ? a : b).subtract(const Duration(days: 7));
+    final earliestPossible =
+        addDays(doneDates.reduce((a, b) => a.isBefore(b) ? a : b), -7);
 
     while (checkDate.isAfter(earliestPossible)) {
       if (!task.isScheduledOn(checkDate)) {
-        checkDate = checkDate.subtract(const Duration(days: 1));
+        checkDate = previousDay(checkDate);
         continue;
       }
       if (doneDates.contains(checkDate)) {
         streak++;
-        checkDate = checkDate.subtract(const Duration(days: 1));
+        checkDate = previousDay(checkDate);
       } else {
         break;
       }
@@ -317,6 +292,39 @@ class StorageService {
   /// Persist a new settings object.
   Future<void> saveSettings(Settings settings) async {
     await _settingsBox.put(_settingsKey, settings);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Bulk replace (backup restore)
+  // ──────────────────────────────────────────────────────────────────
+
+  /// Wipe the tasks and logs boxes and rewrite them from [tasks] and [logs],
+  /// optionally replacing [settings] too.
+  ///
+  /// Used only by a backup restore. Callers must have confirmed the
+  /// destruction with the user first: this is deliberately a replace rather
+  /// than a merge, because two divergent histories for the same habit have
+  /// no single correct resolution.
+  ///
+  /// Logs are re-keyed through [_logKey] rather than trusting keys from the
+  /// file, so an import can never write an entry the rest of the app cannot
+  /// look up.
+  Future<void> replaceAll({
+    required List<Task> tasks,
+    required List<TaskLog> logs,
+    Settings? settings,
+  }) async {
+    await _tasksBox.clear();
+    await _logsBox.clear();
+
+    await _tasksBox.putAll({for (final task in tasks) task.id: task});
+    await _logsBox.putAll({
+      for (final log in logs) _logKey(log.taskId, log.date): log,
+    });
+
+    if (settings != null) {
+      await saveSettings(settings);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -340,13 +348,20 @@ class StorageService {
     );
 
     if (localTime.isBefore(cutoff)) {
-      return cutoff.subtract(const Duration(days: 1));
+      // Step the calendar day, then re-apply the reset hour, so a
+      // daylight-saving change cannot shift the cutoff off its hour.
+      final previous = previousDay(cutoff);
+      return DateTime(
+        previous.year,
+        previous.month,
+        previous.day,
+        resetTime.hour,
+        resetTime.minute,
+      );
     }
     return cutoff;
   }
 
   /// Start-of-day for a given DateTime (midnight local).
-  DateTime _startOfDay(DateTime dt) {
-    return DateTime(dt.year, dt.month, dt.day);
-  }
+  DateTime _startOfDay(DateTime dt) => startOfDay(dt);
 }

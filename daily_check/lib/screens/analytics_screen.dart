@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../helpers/date_utils.dart';
 import '../helpers/icon_helper.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
@@ -27,7 +28,6 @@ const _rankAccents = [
   Color(0xFFFFB703),
 ];
 
-DateTime _startOfDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
 /// Analytics screen (v2) — an original "Insights" dashboard: a custom-painted
 /// donut breaking down done/missed/skipped days, an animated 14-day
@@ -46,7 +46,7 @@ class AnalyticsScreen extends ConsumerWidget {
       return const Scaffold(body: _EmptyState());
     }
 
-    final last30 = List.generate(_lookbackDays, (i) => _startOfDay(now.subtract(Duration(days: i))));
+    final last30 = List.generate(_lookbackDays, (i) => addDays(now, -i));
     final allLogs30 = last30.expand((day) => ref.watch(logsForDateProvider(day))).toList();
     final doneCount = allLogs30.where((l) => l.status == LogStatus.done).length;
     final missedCount = allLogs30.where((l) => l.status == LogStatus.missed).length;
@@ -55,7 +55,7 @@ class AnalyticsScreen extends ConsumerWidget {
     final untouched = (totalPossible - doneCount - missedCount - skippedCount).clamp(0, totalPossible);
     final overallRate = totalPossible == 0 ? 0.0 : doneCount / totalPossible;
 
-    final last14 = List.generate(_trendDays, (i) => _startOfDay(now.subtract(Duration(days: _trendDays - 1 - i))));
+    final last14 = List.generate(_trendDays, (i) => addDays(now, i - (_trendDays - 1)));
     final trend = last14.map((day) {
       final logs = ref.watch(logsForDateProvider(day));
       if (tasks.isEmpty) return 0.0;
