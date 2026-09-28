@@ -111,7 +111,9 @@ class StreaksScreen extends ConsumerWidget {
     final spotlightLogs = storage.getLogsForTask(spotlightTask.id);
 
     final now = startOfDay(DateTime.now());
-    final last7 = List.generate(7, (i) => addDays(now, i - 6));
+    // Calendar week, Monday first, to line up with the M–S labels on the hero card.
+    final monday = addDays(now, 1 - now.weekday);
+    final last7 = List.generate(7, (i) => addDays(monday, i));
     final last30 = List.generate(30, (i) => addDays(now, i - 29));
     final allLogs30 = last30.expand((day) => ref.watch(logsForDateProvider(day))).toList();
 
